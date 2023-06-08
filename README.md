@@ -1,0 +1,3 @@
+# Spotify Songs Rating Predictive Algorithm
+
+The aim of this project is to create a predictive model to predict the rating of various songs by utilizing the songs characteristics/features (like using performer or genere etc.. or combination of these features). Two distinct datasets were provided, one is analysisData.csv to train the model and scoringData.csv to predict the ranking for the given songs characteristics of the songs. The essence of this project is to utilize the data exploration techniques, understand the dataset use data tyding techniques, feature engineering methods, using predictive algorithm to predict the rating and fianlly tune the model by tuning hyper-parameters to improve accuracy of our prediction.
