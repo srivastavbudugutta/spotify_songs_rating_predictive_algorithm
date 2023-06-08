@@ -1,0 +1,239 @@
+---
+title: "Model_4_Random_Forest"
+author: "Srivastav Budugutta"
+date: "2023-03-13"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Model Overview
+>In this we will be investigating on the performers data.
+Different types of performers are: individual names, performers with "featuring in between performers, & is there between performers, "+" is there when the artisits combine with other performers.
+
+
+#initiating library
+
+```{r}
+
+library(tidyverse)
+library(randomForest)
+
+```
+## Function definitions
+```{r}
+impute_values = function(dat){
+  seed_value = 1000
+  set.seed(1000)
+  dat = mice(dat, seed = seed_value, method = "pmm")
+  dat = complete(dat)
+  return(dat)
+}
+
+clean_rating = function(dat){
+  dat = dat %>% mutate(rating = if_else(rating<0,0,rating))
+  
+  return(dat)
+}
+
+change_track_explicit_to_numeric = function(dat){
+  dat = dat %>% mutate(track_explicit = ifelse(track_explicit == FALSE,0,1))
+  return(dat)
+}
+
+create_interactions_Variable = function(dat){
+  dat = dat %>% mutate(interactive = danceability*energy)
+  return(dat)
+}
+
+create_song_intensity = function(dat){
+  dat = dat %>% mutate(song_intensity = danceability * energy * (10^(loudness/20)))
+  return(dat)
+}
+
+create_acoustic_energy = function(dat){
+  dat = dat %>% mutate(acoustic_energy = (1 - instrumentalness) * energy)
+  return(dat)
+}
+
+create_instrumental_energy = function(dat){
+  dat = dat %>% mutate(instrumental_energy = energy - (energy*(1-instrumentalness)))
+  return(dat)
+}
+
+create_live_energy = function(dat){
+  dat = dat %>% mutate(liveenergy = liveness*energy)
+  return(dat)
+}
+
+
+
+
+# not working
+create_danceability_variance = function(dat){
+  dat = dat %>% mutate(danceability_variance = sd(danceability))
+  return(dat)
+}
+
+# not working
+create_temo_variance = function(dat){
+  dat = dat %>% mutate(tempo_variance = sd(tempo))
+  return(dat)
+}
+
+
+
+```
+
+# Train Data Set
+```{r}
+songs = read_csv("data/analysisData.csv")
+
+
+dim(songs)
+songs = clean_rating(songs)
+songs = change_track_explicit_to_numeric(songs)
+songs %>% group_by(performer) %>% summarise(mean_rating = mean(rating))
+
+
+# songs$track_explicit
+head(songs)
+min(songs$rating)
+# geners_modify = songs %>% mutate(genre = str_extract_all(genre, regex("\'(.*?)\'", ignore_case = T)))
+# geners_modify$genre
+
+# we are trying to separate all the genre types
+geners_modify = songs %>% separate_rows(genre, sep = ",\\s*")
+geners_modify = geners_modify %>%  mutate(genre = str_replace_all(genre, "\\[|\\]|'|\"", ""))
+geners_modify %>% group_by(genre) %>% count()
+genre_mean_rating = geners_modify %>% group_by(genre) %>% summarize(avg_rating = mean(rating))
+genre_mean_rating %>% filter(genre == "acoustic punk")
+genre_mean_rating[geners_modify$genre,]
+head(geners_modify)
+geners_modify = geners_modify %>% mutate(track_duration = track_duration/(60*1000))
+
+(geners_modify %>% group_by(genre) %>% summarize(avg_rating = mean(rating)) %>% arrange(avg_rating))
+# geners_modify_1= geners_modify %>% group_by(genre) %>% summarize(avg_rating = mean(rating)) %>% ungroup() %>% mutate(genre = avg_rating)
+# now we know what are the mean ratings for each genre now we will combine it to the song id.
+geners_modify_1= geners_modify %>% group_by(genre) %>% mutate(avg_rating = mean(rating)) %>% ungroup() %>% mutate(genre = avg_rating)
+geners_modify_1 = geners_modify_1 %>% group_by(id) %>% mutate(genre = mean(genre))
+geners_modify_1 = geners_modify_1 %>%  select(-avg_rating)
+mean(geners_modify_1$genre[c(1:4)])
+geners_modify_1 %>% group_by(id)
+geners_modify_2= distinct(geners_modify_1, .keep_all = T)
+
+geners_modify_2 = create_interactions_Variable(geners_modify_2)
+# geners_modify_2 = create_danceability_variance(geners_modify_2)
+# geners_modify_2 = create_temo_variance(geners_modify_2)
+geners_modify_2 = create_song_intensity(geners_modify_2)
+geners_modify_2 = create_acoustic_energy(geners_modify_2)
+geners_modify_2 = create_live_energy(geners_modify_2)
+geners_modify_2 = create_instrumental_energy(geners_modify_2)
+geners_modify_2
+geners_modify_2 = impute_values(geners_modify_2)
+
+```
+
+## Test
+
+
+
+
+
+```{r}
+songs_test = read_csv("data/scoringData.csv")
+songs_test = change_track_explicit_to_numeric(songs_test)
+songs_test = songs_test %>% separate_rows(genre, sep = ",\\s*")
+songs_test = songs_test %>%  mutate(genre = str_replace_all(genre, "\\[|\\]|'|\"", ""))
+songs_test = songs_test %>% mutate(track_duration = track_duration/(60*1000))
+
+# songs_test_without_rating = songs_test
+genre_mean_rating 
+songs_test
+
+# copying the corresponding values of the genre type to songs
+index_value = match(songs_test$genre, genre_mean_rating$genre)
+# index_value
+songs_test$genre = genre_mean_rating$avg_rating[index_value] 
+songs_test_1 = songs_test %>% group_by(id) %>% mutate(genre = mean(genre))
+songs_test_1
+songs_test_2= distinct(songs_test_1, .keep_all = T)
+songs_test_2
+songs_test_2 = create_interactions_Variable(songs_test_2)
+# geners_modify_2 = create_danceability_variance(geners_modify_2)
+# geners_modify_2 = create_temo_variance(geners_modify_2)
+songs_test_2 = create_song_intensity(songs_test_2)
+songs_test_2 = create_acoustic_energy(songs_test_2)
+songs_test_2 = create_live_energy(songs_test_2)
+songs_test_2 = create_instrumental_energy(songs_test_2)
+dim(songs_test_2)
+songs_test_2 = impute_values(songs_test_2)
+
+# merged_song_set = merge(songs_test, genre_mean_rating, by.x = "genre", by.y = "genre",all.x = T)
+# merged_song_set
+# songs_test$genre = merged_song_set$avg_rating
+# songs_test
+# songs_test_without_rating
+#lets verify if the values for that particular song is given right average rating value.
+# songs_test = songs_test %>% group_by(genre) %>% mutate(avg_rating = mean(rating)) %>% ungroup() %>% mutate(genre = avg_rating)
+geners_modify_2
+
+
+```
+
+
+
+
+
+
+# prediction
+
+```{r}
+model_1 = randomForest(rating~., data=geners_modify_2)
+importance_scores = importance(model_1)
+top_predictors = names(importance_scores[order(importance_scores, decreasing = TRUE)[1:5]])
+pred = predict(model_1, newdata=songs_test_2)
+
+submissionFile <- data.frame(id = songs_test_2$id, rating = pred)
+sum(is.na.data.frame(submissionFile))
+write.csv(submissionFile, 'model_4_RandomForest_1.csv',row.names = F)
+
+
+
+
+```
+
+
+# Saving the model
+
+```{r}
+
+# submissionFile = data.frame(id = songs_test_2$id, rating = model_1_predict)
+# submissionFile[is.na(submissionFile)] = 24
+# write.csv(submissionFile, 'model_4.csv',row.names = F)
+# # head(songs_test)
+# # head(geners_modify)
+# # dim(geners_modify)
+
+
+```
+
+
+
+
+```{r}
+
+
+
+```
+
+
+
+
+```{r}
+
+
+
+```

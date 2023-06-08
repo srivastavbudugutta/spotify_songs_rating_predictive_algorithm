@@ -1,0 +1,150 @@
+---
+title: "Unsubmitted_gbm"
+author: "Srivastav Budugutta"
+date: "2023-04-27"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+
+library(tidyverse)
+```
+## Function definitions
+```{r}
+clean_rating = function(dat){
+  dat = dat %>% mutate(rating = if_else(rating<0,0,rating))
+  
+  return(dat)
+}
+
+change_track_explicit_to_numeric = function(dat){
+  dat = dat %>% mutate(track_explicit = ifelse(track_explicit == FALSE,0,1))
+  return(dat)
+}
+
+
+```
+
+# Train Data Set
+```{r}
+songs = read_csv("data/analysisData.csv")
+
+
+
+dim(songs)
+songs = clean_rating(songs)
+songs = change_track_explicit_to_numeric(songs)
+songs %>% group_by(performer) %>% summarise(mean_rating = mean(rating))
+
+
+# songs$track_explicit
+head(songs)
+min(songs$rating)
+# geners_modify = songs %>% mutate(genre = str_extract_all(genre, regex("\'(.*?)\'", ignore_case = T)))
+# geners_modify$genre
+
+# we are trying to separate all the genre types
+geners_modify = songs %>% separate_rows(genre, sep = ",\\s*")
+geners_modify = geners_modify %>%  mutate(genre = str_replace_all(genre, "\\[|\\]|'|\"", ""))
+geners_modify %>% group_by(genre) %>% count()
+genre_mean_rating = geners_modify %>% group_by(genre) %>% summarize(avg_rating = mean(rating))
+genre_mean_rating %>% filter(genre == "acoustic punk")
+genre_mean_rating
+genre_mean_rating[geners_modify$genre,]
+head(geners_modify)
+geners_modify = geners_modify %>% mutate(track_duration = track_duration/(60*1000))
+
+(geners_modify %>% group_by(genre) %>% summarize(avg_rating = mean(rating)) %>% arrange(avg_rating))
+# geners_modify_1= geners_modify %>% group_by(genre) %>% summarize(avg_rating = mean(rating)) %>% ungroup() %>% mutate(genre = avg_rating)
+# now we know what are the mean ratings for each genre now we will combine it to the song id.
+geners_modify_1= geners_modify %>% group_by(genre) %>% mutate(avg_rating = mean(rating)) %>% ungroup() %>% mutate(genre = avg_rating)
+geners_modify_1
+sapply(geners_modify_1, function(data) which(is.na(data)))
+geners_modify_1 = geners_modify_1 %>% group_by(id) %>% mutate(genre = mean(genre))
+geners_modify_1 = geners_modify_1 %>%  select(-avg_rating)
+mean(geners_modify_1$genre[c(1:4)])
+geners_modify_1 %>% group_by(id)
+songs_train_data= distinct(geners_modify_1, .keep_all = T)
+```
+
+## Test
+
+
+```{r}
+songs_test = read_csv("data/scoringData.csv")
+songs_test = change_track_explicit_to_numeric(songs_test)
+songs_test = songs_test %>% separate_rows(genre, sep = ",\\s*")
+songs_test = songs_test %>%  mutate(genre = str_replace_all(genre, "\\[|\\]|'|\"", ""))
+songs_test = songs_test %>% mutate(track_duration = track_duration/(60*1000))
+
+# songs_test_without_rating = songs_test
+genre_mean_rating 
+songs_test
+
+# copying the corresponding values of the genre type to songs
+index_value = match(songs_test$genre, genre_mean_rating$genre)
+index_value
+songs_test$genre = genre_mean_rating$avg_rating[index_value] 
+songs_test_1 = songs_test %>% group_by(id) %>% mutate(genre = mean(genre))
+songs_test_1
+songs_test_2= distinct(songs_test_1, .keep_all = T)
+songs_test_2
+
+# merged_song_set = merge(songs_test, genre_mean_rating, by.x = "genre", by.y = "genre",all.x = T)
+# merged_song_set
+# songs_test$genre = merged_song_set$avg_rating
+# songs_test
+# songs_test_without_rating
+#lets verify if the values for that particular song is given right average rating value.
+# songs_test = songs_test %>% group_by(genre) %>% mutate(avg_rating = mean(rating)) %>% ungroup() %>% mutate(genre = avg_rating)
+songs_train_data = geners_modify_2
+
+
+# creating feature liveenergy (which is liveness*energy)
+songs_train_data = songs_train_data %>% mutate(liveliness_in_music = liveness*energy)
+songs_test_2 = songs_test_2 %>% mutate(liveliness_in_music = liveness*energy)
+
+# creating feature instrumental energy (which is energy - (energy*(1-instrumentalness)))
+songs_train_data = songs_train_data %>% mutate(intensity_of_instrumentation = energy - (energy*(1-instrumentalness)))
+songs_test_2 = songs_test_2 %>% mutate(intensity_of_instrumentation = energy - (energy*(1-instrumentalness)))
+
+# creating feature acoustic energy (which is acoustic_energy = (1 - instrumentalness) * energy)
+songs_train_data = songs_train_data %>% mutate(acousticness_in_the_music= (1 - instrumentalness) * energy)
+songs_test_2 = songs_test_2 %>% mutate(acousticness_in_the_music= (1 - instrumentalness) * energy)
+
+# creating feature interactive variable (which is interactive = danceability*energy)
+songs_train_data = songs_train_data %>% mutate(music_interactiveness = danceability*energy)
+songs_test_2 = songs_test_2 %>% mutate(music_interactiveness = danceability*energy)
+
+```
+
+```{r}
+library(caret)
+set.seed(1031)
+trControl = trainControl(method="cv",number=5)
+tuneGrid = expand.grid(n.trees = 500, 
+                       interaction.depth = c(1,2,3),
+                       shrinkage = (1:100)*0.001,
+                       n.minobsinnode=c(5,10,15))
+garbage = capture.output(cvModel <- train(Balance~.,
+                                          data=train,
+                                          method="gbm",
+                                          trControl=trControl, 
+                                          tuneGrid=tuneGrid))
+set.seed(1031)
+cvboost = gbm(Balance~.,
+              data=train,
+              distribution="gaussian",
+              n.trees=500,
+              interaction.depth=cvModel$bestTune$interaction.depth,
+              shrinkage=cvModel$bestTune$shrinkage,
+              n.minobsinnode = cvModel$bestTune$n.minobsinnode)
+
+pred_train = predict(cvboost, n.trees=500)
+rmse_train_cv_boost = sqrt(mean((pred_train - train$Balance)^2)); rmse_train_cv_boost
+
+```

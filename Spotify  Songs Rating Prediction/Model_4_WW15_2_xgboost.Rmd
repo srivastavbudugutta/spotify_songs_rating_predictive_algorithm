@@ -1,0 +1,546 @@
+---
+title: "Model_4_WW15_2_xgboost"
+author: "Srivastav Budugutta"
+date: "2023-03-13"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Model Overview
+>In this we will be investigating on the performers data.
+Different types of performers are: individual names, performers with "featuring in between performers, & is there between performers, "+" is there when the artisits combine with other performers.
+
+
+#initiating library
+
+```{r}
+rm(list = ls())
+library(tidyverse)
+library(vtreat)
+library(mice)
+library(xgboost); library(caret)
+library(randomForest)
+library(ISLR2)
+```
+## Function definitions
+```{r}
+set.seed(1031)
+
+
+clean_rating = function(dat){
+  dat = dat %>% mutate(rating = if_else(rating<0,0,rating))
+  
+  return(dat)
+}
+
+change_track_explicit_to_numeric = function(dat){
+  dat = dat %>% mutate(track_explicit = ifelse(track_explicit == FALSE,0,1))
+  return(dat)
+}
+
+create_interactions_Variable = function(dat){
+  dat = dat %>% mutate(interactive = danceability*energy)
+  return(dat)
+}
+
+create_song_intensity = function(dat){
+  dat = dat %>% mutate(song_intensity = danceability * energy * (10^(loudness/20)))
+  return(dat)
+}
+
+create_acoustic_energy = function(dat){
+  dat = dat %>% mutate(acoustic_energy = (1 - instrumentalness) * energy)
+  return(dat)
+}
+
+create_instrumental_energy = function(dat){
+  dat = dat %>% mutate(instrumental_energy = energy - (energy*(1-instrumentalness)))
+  return(dat)
+}
+
+create_live_energy = function(dat){
+  dat = dat %>% mutate(liveenergy = liveness*energy)
+  return(dat)
+}
+
+# not working
+create_danceability_variance = function(dat){
+  dat = dat %>% mutate(danceability_variance = sd(danceability))
+  return(dat)
+}
+
+# not working
+create_temo_variance = function(dat){
+  dat = dat %>% mutate(tempo_variance = sd(tempo))
+  return(dat)
+}
+
+modify_performer_gener = function(dat){
+  dat = dat %>% mutate(ph = ifelse(grepl("pinoy hip hop", x= dat$genre, ignore.case = T), "YES", "NO")) %>% mutate(stp = ifelse(grepl("stomp pop", x= dat$genre, ignore.case = T) |
+                                                                                                                              grepl("portland hip hop", x= dat$genre, ignore.case = T) |
+                                                                                                                              grepl("minnesota hip hop", x= dat$genre, ignore.case = T) |
+                                                                                                                              grepl("k-hop", x= dat$genre, ignore.case = T), "YES", "NO")) %>% mutate(aq = ifelse(grepl("alt z", x= dat$genre, ignore.case = T)|
+                         grepl("queer country", x= dat$genre, ignore.case = T), "YES", "NO")) %>%
+  mutate(im = ifelse(grepl("italo dance", x= dat$genre, ignore.case = T)|
+                         grepl("middle earth", x= dat$genre, ignore.case = T), "YES", "NO")) %>%
+  mutate(cd = ifelse(grepl("corrido", x= dat$genre, ignore.case = T)|
+                         grepl("deep regional mexican", x= dat$genre, ignore.case = T), "YES", "NO")) %>% mutate(ua = ifelse(grepl("uk funky", x= dat$genre, ignore.case = T)|
+                         grepl("anarcho-punk", x= dat$genre, ignore.case = T), "YES", "NO")) %>% mutate(ua = ifelse(grepl("viral trap", x= dat$genre, ignore.case = T)|
+                         grepl("theme", x= dat$genre, ignore.case = T), "YES", "NO")) %>% mutate(bc = ifelse(grepl("bassline", x= dat$genre, ignore.case = T)|
+                         grepl("cartoon", x= dat$genre, ignore.case = T), "YES", "NO")) %>% mutate(bmv = ifelse(grepl("barbadian pop", x= dat$genre, ignore.case = T)|
+                         grepl("melbourne bounce international", x= dat$genre, ignore.case = T) | grepl("vapor twitch", x= dat$genre, ignore.case = T), "YES", "NO")) %>% 
+  mutate(ecggs = ifelse(grepl("etherpop", x= dat$genre, ignore.case = T)|
+                         grepl("celtic", x= dat$genre, ignore.case = T) | grepl("gauze pop", x= dat$genre, ignore.case = T) | grepl("german soundtrack", x= dat$genre, ignore.case = T) | grepl("shiver pop", x= dat$genre, ignore.case = T), "YES", "NO")) %>% 
+  
+  mutate(dds = ifelse(grepl("dfw rap", x= dat$genre, ignore.case = T)|
+                         grepl("danish pop", x= dat$genre, ignore.case = T) | grepl("steampunk", x= dat$genre, ignore.case = T), "YES", "NO")) %>%
+  
+  mutate(rd = ifelse(grepl("regional mexican pop", x= dat$genre, ignore.case = T)|
+                         grepl("dubstep", x= dat$genre, ignore.case = T) | grepl("steampunk", x= dat$genre, ignore.case = T), "YES", "NO")) %>% 
+  
+  
+  mutate(s = ifelse(grepl("slap house", x= dat$genre, ignore.case = T), "YES", "NO")) %>%
+  
+  mutate(sddfn = ifelse(grepl("swedish hard rock", x= dat$genre, ignore.case = T)|
+                         grepl("deep norteno", x= dat$genre, ignore.case = T) | grepl("derby indie", x= dat$genre, ignore.case = T) | grepl("filter house", x= dat$genre, ignore.case = T) | grepl("norteno-sax", x= dat$genre, ignore.case = T), "YES", "NO")) %>% 
+  
+  mutate(an_1 = ifelse(grepl("austropop", x= dat$genre, ignore.case = T)|
+                         grepl("neue deutsche welle", x= dat$genre, ignore.case = T), "YES", "NO")) %>%
+  
+  
+  mutate(iss_1 = ifelse(grepl("indie singer-songwriter", x= dat$genre, ignore.case = T), "YES", "NO")) %>%
+  
+  mutate(cp_1 = ifelse(grepl("canadian latin", x= dat$genre, ignore.case = T)|
+                         grepl("progressive electro house", x= dat$genre, ignore.case = T), "YES", "NO")) %>%  
+  
+  
+  mutate(new_age = ifelse(grepl("new age", x= dat$genre, ignore.case = T), "YES", "NO")) %>%  
+  
+  mutate(gbl_1 = ifelse(grepl("german pop", x= dat$genre, ignore.case = T) |
+                            grepl("breakbeat", x= dat$genre, ignore.case = T)|
+                            grepl("liquid funk", x= dat$genre, ignore.case = T), "YES", "NO")) %>% 
+  
+  mutate(scandipop = ifelse(grepl("scandipop", x= dat$genre, ignore.case = T) , "YES", "NO")) %>%
+  
+  mutate(kaijs_1 = ifelse(grepl("k-pop boy group", x= dat$genre, ignore.case = T) |
+                            grepl("alabama rap", x= dat$genre, ignore.case = T)|
+                            grepl("italo house", x= dat$genre, ignore.case = T) |
+                            grepl("jazz trio", x= dat$genre, ignore.case = T)|
+                            grepl("ska revival", x= dat$genre, ignore.case = T), "YES", "NO")) %>%
+  
+   mutate(the_performer = ifelse(grepl("The", x = dat$performer, ignore.case = TRUE), "YES", "NO")) %>%  
+  mutate(the_performer = ifelse(grepl("The", x = dat$performer, ignore.case = TRUE), "YES", "NO")) %>%
+  
+  mutate(group_performer = ifelse(grepl("\\s*&\\s*", x = dat$performer, ignore.case = TRUE) | 
+                                    grepl("\\s*featuring\\s*", x = dat$performer, ignore.case = TRUE) |
+                                    grepl("\\s+or\\s+", x = dat$performer, ignore.case = TRUE) |
+                                    grepl("\\s*with\\s*", x = dat$performer, ignore.case = TRUE), "YES", "NO"))
+  
+  return(dat)
+}
+
+change_track_duration = function(dat){
+  dat = dat %>% mutate(track_duration = track_duration/(60*1000))
+}
+
+```
+
+# Reading prediction
+
+```{r}
+
+predictions = read_csv("data/predictions_gener_mean.csv")
+head(predictions)
+predictions = predictions %>% select(-Column1_orig)
+colnames(predictions)
+new_predictions = predictions %>% group_by(id_orig) %>% mutate(rating_predicted = mean(rating_predicted)) %>% select(-genre_orig)
+new_predictions = distinct(new_predictions, .keep_all = T)
+unique(new_predictions)
+new_predictions
+submissionFile = data.frame(id = new_predictions$id_orig, rating = new_predictions$rating_predicted)
+write.csv(submissionFile, 'Azure_model_genre_mean.csv',row.names = F)
+
+```
+
+# Train Data Set
+```{r}
+songs = read_csv("data/analysisData.csv")
+q4_sample_Data = createDataPartition(y = songs$rating, p=0.8, groups = 10, list = F)
+songs_test = songs[-q4_sample_Data,]
+songs_train = songs[q4_sample_Data,]
+songs
+songs_test
+
+dim(songs)
+songs_train = clean_rating(songs_train)
+songs_test = clean_rating(songs_test)
+songs_train = change_track_explicit_to_numeric(songs_train)
+songs_test = change_track_explicit_to_numeric(songs_test) 
+# songs %>% group_by(performer) %>% summarise(mean_rating = mean(rating))
+# songs %>% summarize(mean_of_rating = mean(rating))
+
+# songs$track_explicit
+# head(songs)
+# min(songs$rating)
+# geners_modify = songs %>% mutate(genre = str_extract_all(genre, regex("\'(.*?)\'", ignore_case = T)))
+# geners_modify$genre
+
+# we are trying to separate all the genre types
+# geners_modify = songs %>% separate_rows(genre, sep = ",\\s*")
+# geners_modify = geners_modify %>%  mutate(genre = str_replace_all(genre, "\\[|\\]|'|\"", ""))
+# geners_modify %>% group_by(genre) %>% count()
+# geners_modify %>% filter(genre == "pinoy hip hop")
+# genre_mean_rating = geners_modify %>% group_by(genre) %>% summarize(avg_rating = mean(rating))
+# genre_mean_rating %>% filter(genre == "acoustic punk")
+# order(genre_mean_rating)
+# genre_mean_rating %>% arrange(desc(avg_rating)) %>% filter(avg_rating >50)
+# head(geners_modify)
+# geners_modify = geners_modify %>% mutate(track_duration = track_duration/(60*1000))
+# 
+# (geners_modify %>% group_by(genre) %>% summarize(avg_rating = mean(rating)) %>% arrange(avg_rating))
+# # geners_modify_1= geners_modify %>% group_by(genre) %>% summarize(avg_rating = mean(rating)) %>% ungroup() %>% mutate(genre = avg_rating)
+# # now we know what are the mean ratings for each genre now we will combine it to the song id.
+# geners_modify_1= geners_modify %>% group_by(genre) %>% mutate(avg_rating = mean(rating)) %>% ungroup() %>% mutate(genre = avg_rating)
+# geners_modify_1
+# sapply(geners_modify_1, function(data) which(is.na(data)))
+# geners_modify_1 = geners_modify_1 %>% group_by(id) %>% mutate(genre = mean(genre))
+# geners_modify_1 = geners_modify_1 %>%  select(-avg_rating)
+# mean(geners_modify_1$genre[c(1:4)])
+# geners_modify_1 %>% group_by(id)
+# geners_modify_2= distinct(geners_modify_1, .keep_all = T)
+# 
+# geners_modify_2 = create_interactions_Variable(geners_modify_2)
+# # geners_modify_2 = create_danceability_variance(geners_modify_2)
+# # geners_modify_2 = create_temo_variance(geners_modify_2)
+# geners_modify_2 = create_song_intensity(geners_modify_2)
+# geners_modify_2 = create_acoustic_energy(geners_modify_2)
+# geners_modify_2 = create_live_energy(geners_modify_2)
+# geners_modify_2 = create_instrumental_energy(geners_modify_2)
+# geners_modify_2
+# clean.dat <- clean.dat %>% 
+#   mutate(the_performer = ifelse(grepl("The", x = clean.dat$performer, ignore.case = TRUE), "YES", "NO"))
+# 
+# clean.test <- clean.test %>% 
+#   mutate(the_performer = ifelse(grepl("The", x = clean.test$performer, ignore.case = TRUE), "YES", "NO"))
+songs_train_data = modify_performer_gener(songs_train)
+songs_train_data = change_track_duration(songs_train_data)
+songs_train_data = create_interactions_Variable(songs_train_data)
+
+songs_train_data = create_song_intensity(songs_train_data)
+songs_train_data = create_acoustic_energy(songs_train_data)
+songs_train_data = create_live_energy(songs_train_data)
+songs_train_data = create_instrumental_energy(songs_train_data)
+songs_train_data = songs_train_data %>% select(-id,-performer,-song, -genre)
+
+dim(songs_train_data)
+songs_test_data = modify_performer_gener(songs_test)
+songs_test_data = change_track_duration(songs_test_data)
+songs_test_data = create_interactions_Variable(songs_test_data)
+
+songs_test_data = create_song_intensity(songs_test_data)
+songs_test_data = create_acoustic_energy(songs_test_data)
+songs_test_data = create_live_energy(songs_test_data)
+songs_test_data = create_instrumental_energy(songs_test_data)
+songs_test_data = songs_test_data %>% select(-id,-performer,-song, -genre)
+dim(songs_test_data)
+sapply(songs_train_data, function(dat) which(is.na(dat)))
+  
+cvforest = randomForest(rating~., 
+                        songs_train_data, 
+                        mtry = 14, 
+                        ntree = 4000)
+
+# pred_train = predict(cvforest)
+# rmse_train_cv_forest = sqrt(mean((pred_train - train$Balance)^2)); rmse_train_cv_forest
+pred_forest = predict(cvforest, newdata= songs_test_data)
+# rmse_cv_forest = sqrt(mean((pred_forest - geners_modify_2$rating)^2)); rmse_cv_forest
+submissionFile = data.frame(id = songs_test_2$id, rating = pred_forest)
+write.csv(submissionFile, 'Model_4_WW15_2_forest_mtry_8.csv',row.names = F)
+  
+  
+  
+  
+# pinoy hip hop	71.00000			
+# stomp pop	68.66667			
+# portland hip hop	68.00000			
+# minnesota hip hop	67.50000			
+# k-hop	67.00000			
+# alt z	65.50000			
+# queer country	65.00000			
+# italo dance	64.00000			
+# middle earth	64.00000			
+# corrido	63.00000	
+# deep regional mexican	63.00000			
+# uk funky	61.33333			
+# anarcho-punk	61.00000			
+# viral trap	60.25000	
+# theme	60.00000			
+# bassline	59.00000			
+# cartoon	59.00000			
+# barbadian pop	58.58621			
+# melbourne bounce international	58.00000			
+# vapor twitch	58.00000
+# etherpop	57.55556			
+# celtic	57.00000			
+# gauze pop	57.00000			
+# german soundtrack	57.00000			
+# shiver pop	57.00000			
+# dfw rap	56.59259			
+# danish pop	56.33333			
+# steampunk	56.00000			
+# regional mexican pop	55.50000			
+# dubstep	55.00000	
+# slap house	54.66667			
+# swedish hard rock	54.25000			
+# deep norteno	54.00000			
+# derby indie	54.00000			
+# filter house	54.00000			
+# norteno-sax	54.00000			
+# austropop	53.50000			
+# neue deutsche welle	53.50000			
+# indie singer-songwriter	53.00000			
+# canadian latin	52.80000	
+# progressive electro house	52.80000			
+# new age	52.50000			
+# german pop	52.16667			
+# breakbeat	52.00000			
+# liquid funk	52.00000			
+# scandipop	51.66667			
+# k-pop boy group	51.33333			
+# alabama rap	51.00000			
+# italo house	51.00000			
+# jazz trio	51.00000	
+# ska revival	51.00000	
+```
+
+## Test
+
+
+
+
+
+```{r}
+songs_test = read_csv("data/scoringData.csv")
+songs_test = change_track_explicit_to_numeric(songs_test)
+songs_test = songs_test %>% separate_rows(genre, sep = ",\\s*")
+songs_test = songs_test %>%  mutate(genre = str_replace_all(genre, "\\[|\\]|'|\"", ""))
+songs_test = songs_test %>% mutate(track_duration = track_duration/(60*1000))
+
+# songs_test_without_rating = songs_test
+genre_mean_rating 
+songs_test
+
+# copying the corresponding values of the genre type to songs
+index_value = match(songs_test$genre, genre_mean_rating$genre)
+# index_value
+songs_test$genre = genre_mean_rating$avg_rating[index_value] 
+songs_test_1 = songs_test %>% group_by(id) %>% mutate(genre = mean(genre))
+songs_test_1
+songs_test_2= distinct(songs_test_1, .keep_all = T)
+songs_test_2
+songs_test_2 = create_interactions_Variable(songs_test_2)
+# geners_modify_2 = create_danceability_variance(geners_modify_2)
+# geners_modify_2 = create_temo_variance(geners_modify_2)
+songs_test_2 = create_song_intensity(songs_test_2)
+songs_test_2 = create_acoustic_energy(songs_test_2)
+songs_test_2 = create_live_energy(songs_test_2)
+songs_test_2 = create_instrumental_energy(songs_test_2)
+dim(songs_test_2)
+
+# merged_song_set = merge(songs_test, genre_mean_rating, by.x = "genre", by.y = "genre",all.x = T)
+# merged_song_set
+# songs_test$genre = merged_song_set$avg_rating
+# songs_test
+# songs_test_without_rating
+#lets verify if the values for that particular song is given right average rating value.
+# songs_test = songs_test %>% group_by(genre) %>% mutate(avg_rating = mean(rating)) %>% ungroup() %>% mutate(genre = avg_rating)
+geners_modify_2
+songs_test_2 = impute_values(songs_test_2)
+write.csv(songs_test_2, 'gener_mean_test.csv',row.names = F)
+
+
+```
+
+
+# SH Random Forest
+
+
+```{r}
+model_1 = randomForest(rating~., data=geners_modify_2, ntree = 3000)
+importance_scores = importance(model_1)
+top_predictors = names(importance_scores[order(importance_scores, decreasing = TRUE)[1:5]])
+pred = predict(model_1, newdata=songs_test_2)
+
+submissionFile <- data.frame(id = songs_test_2$id,rating=pred)
+write.csv(submissionFile, 'Model_4_WW15_2_randomforest_no_tuning.csv',row.names = F)
+
+
+```
+
+# check for best subset
+
+```{r}
+head(geners_modify_2)
+geners_modify_2 = geners_modify_2 %>% select(id, performer, song, rating, everything())
+trt = designTreatmentsZ(dframe = geners_modify_2,
+                        varlist = names(geners_modify_2)[5:length(geners_modify_2)])
+
+newvars = trt$scoreFrame[trt$scoreFrame$code%in% c('clean','lev'),'varName']
+newvars
+train_input = prepare(treatmentplan = trt, 
+                      dframe = geners_modify_2,
+                      varRestriction = newvars)
+test_input = prepare(treatmentplan = trt, 
+                     dframe = songs_test_2,
+                     varRestriction = newvars)
+head(train_input)
+
+## choosing the hyperparameter
+
+
+
+tune_nrounds = xgb.cv(data=as.matrix(train_input), 
+                      label = geners_modify_2$rating,
+                      nrounds=250,
+                      nfold = 5,
+                      verbose = 0)
+
+ggplot(data=tune_nrounds$evaluation_log, aes(x=iter, y=test_rmse_mean))+
+  geom_point(size=0.4, color='sienna')+
+  geom_line(size=0.1, alpha=0.1)+
+  theme_bw()
+which.min(tune_nrounds$evaluation_log$test_rmse_mean)
+
+xgboost2= xgboost(data=as.matrix(train_input), 
+                  label = geners_modify_2$rating,
+                  nrounds=13,
+                  verbose = 0)
+pred = predict(xgboost2, 
+               newdata=as.matrix(train_input))
+# pred
+rmse_xgboost = sqrt(mean((pred - geners_modify_2$rating)^2)); rmse_xgboost
+```
+
+
+# prediction
+
+```{r}
+pred = predict(xgboost2, 
+               newdata=as.matrix(test_input))
+
+```
+
+
+# Saving the model
+
+```{r}
+
+submissionFile = data.frame(id = songs_test_2$id, rating = pred)
+write.csv(submissionFile, 'Model_4_WW15_2_xgboost.csv',row.names = F)
+# head(songs_test)
+# head(geners_modify)
+# dim(geners_modify)
+
+
+```
+
+
+## without optimal round
+
+```{r}
+xgboost = xgboost(data=as.matrix(train_input), 
+                  label = geners_modify_2$rating,
+                  nrounds=10000,
+                  verbose = 0,
+                  early_stopping_rounds = 200)
+xgboost$best_iteration
+
+plot(xgboost$evaluation_log)
+
+pred_train = predict(xgboost, 
+               newdata=as.matrix(train_input))
+rmse_train_xgboost = sqrt(mean((pred_train - geners_modify_2$rating)^2)); rmse_train_xgboost
+
+## predicting test
+pred_test = predict(xgboost, 
+               newdata=as.matrix(test_input))
+submissionFile = data.frame(id = songs_test_2$id, rating = pred_test)
+write.csv(submissionFile, 'Model_4_WW15_2_xgboost_without_optimal.csv',row.names = F)
+```
+
+
+## Tuned Forest
+
+```{r}
+library(randomForest)
+trControl = trainControl(method = 'cv', number = 5)
+head(geners_modify_2)
+train = geners_modify_2 %>% select(everything())
+head(train)
+train$new_rating = train$rating
+names(train)[names(train) == "new_rating"] = "rating"
+tuneGrid = expand.grid(mtry = 1:20)
+tuneGrid
+set.seed(1031)
+forest_cv = train(rating~., 
+                  data = train, 
+                  method = 'rf', 
+                  trControl = trControl, 
+                  tuneGrid = tuneGrid, 
+                  ntree = 2000)
+forest_cv$bestTune$mtry
+
+cvforest = randomForest(rating~., 
+                        geners_modify_2, 
+                        mtry = 8, 
+                        ntree = 4000)
+
+# pred_train = predict(cvforest)
+# rmse_train_cv_forest = sqrt(mean((pred_train - train$Balance)^2)); rmse_train_cv_forest
+pred_forest = predict(cvforest, newdata= songs_test_2)
+# rmse_cv_forest = sqrt(mean((pred_forest - geners_modify_2$rating)^2)); rmse_cv_forest
+submissionFile = data.frame(id = songs_test_2$id, rating = pred_forest)
+write.csv(submissionFile, 'Model_4_WW15_2_forest_mtry_8.csv',row.names = F)
+
+
+```
+
+## Tuned Ranger
+
+```{r}
+head(geners_modify_2)
+train = geners_modify_2[,-1]
+train = train[,3:length(train)]
+train$new_rating = train$rating
+train = train[,2:length(train)]
+names(train)[names(train) == "new_rating"] = "rating"
+head(train)
+trControl=trainControl(method="cv",number=5)
+tuneGrid = expand.grid(mtry=1:ncol(train)-1, 
+                       splitrule = c('variance','extratrees','maxstat'), 
+                       min.node.size = c(2,5,10,15,20,25))
+set.seed(1031)
+cvModel = train(rating~.,
+                data=train,
+                method="ranger",
+                num.trees=1000,
+                trControl=trControl,
+                tuneGrid=tuneGrid)
+cvModel$bestTune
+
+##Predicting
+
+cv_forest_ranger = ranger(rating~.,
+                          data=train,
+                          num.trees = 1000, 
+                          mtry=cvModel$bestTune$mtry, 
+                          min.node.size = cvModel$bestTune$min.node.size, 
+                          splitrule = cvModel$bestTune$splitrule)
+
+pred_train = predict(cv_forest_ranger, data = train, num.trees = 1000)
+rmse_train_cv_forest_ranger = sqrt(mean((pred_train$predictions - train$Balance)^2)); rmse_train_cv_forest_ranger
+
+```

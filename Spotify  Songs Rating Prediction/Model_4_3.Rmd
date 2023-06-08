@@ -1,0 +1,331 @@
+---
+title: "Model_4_3"
+author: "Srivastav Budugutta"
+date: "2023-03-13"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Model Overview
+>minutes modification in model4 will be done with respective to genre by giving genre code names and grouping them by mean.
+
+
+#initiating library
+
+```{r}
+rm(list = ls())
+
+library(tidyverse)
+set.seed(1031)
+```
+## Function definitions
+```{r}
+clean_rating = function(dat){
+  dat = dat %>% mutate(rating = if_else(rating<0,0,rating))
+  
+  return(dat)
+}
+
+change_track_explicit_to_numeric = function(dat){
+  dat = dat %>% mutate(track_explicit = ifelse(track_explicit == FALSE,0,1))
+  return(dat)
+}
+
+create_interactions_Variable = function(dat){
+  dat = dat %>% mutate(interactive = danceability*energy)
+  return(dat)
+}
+
+create_song_intensity = function(dat){
+  dat = dat %>% mutate(song_intensity = danceability * energy * (10^(loudness/20)))
+  return(dat)
+}
+
+create_acoustic_energy = function(dat){
+  dat = dat %>% mutate(acoustic_energy = (1 - instrumentalness) * energy)
+  return(dat)
+}
+
+create_instrumental_energy = function(dat){
+  dat = dat %>% mutate(instrumental_energy = energy - (energy*(1-instrumentalness)))
+  return(dat)
+}
+
+create_live_energy = function(dat){
+  dat = dat %>% mutate(liveenergy = liveness*energy)
+  return(dat)
+}
+modify_track_duration = function(dat){
+  dat = dat %>% mutate(track_duration = track_duration/(60*1000))
+  return(dat)
+}
+
+
+
+```
+
+# Train Data Set
+```{r}
+# 
+
+songs = read_csv("data/analysisData.csv")
+
+dim(songs)
+songs = clean_rating(songs)
+songs = change_track_explicit_to_numeric(songs)
+
+head(songs)
+min(songs$rating)
+
+
+# we are trying to separate all the genre types
+genres_modify = songs %>% separate_rows(genre, sep = ",\\s*")
+genres_modify = genres_modify %>%  mutate(genre = str_replace_all(genre, "\\[|\\]|'|\"", ""))
+genres_modify
+geners_modify = modify_track_duration(genres_modify)
+genre_mean_rating = geners_modify %>% group_by(genre) %>% summarize(avg_rating = mean(rating))
+# now we know what are the mean ratings for each genre now we will combine it to the song id.
+genres_modify_1= geners_modify %>% group_by(genre) %>% mutate(avg_rating = mean(rating)) %>% ungroup() %>% mutate(genre = avg_rating)
+genres_modify_1 = genres_modify_1 %>% group_by(id) %>% mutate(genre = mean(genre))
+genres_modify_1 = genres_modify_1 %>%  select(-avg_rating)
+genres_modify_1
+genres_modify_2= distinct(genres_modify_1, .keep_all = T)
+genres_modify_2
+genres_modify_2 = create_interactions_Variable(genres_modify_2)
+genres_modify_2 = create_song_intensity(genres_modify_2)
+genres_modify_2 = create_acoustic_energy(genres_modify_2)
+genres_modify_2 = create_live_energy(genres_modify_2)
+genres_modify_2 = create_instrumental_energy(genres_modify_2)
+genres_modify_2
+
+
+# now the modification done here is for the performer? for team of performer and individual performer
+genres_modify_2$individual_group <- ifelse(grepl("\\s+&\\s+|\\s+featuring\\s+|\\s+or\\s+|\\s+with\\s+", genres_modify_2$performer), 1, 2)
+
+
+
+group_and_individual_mean = genres_modify_2 %>% group_by(individual_group) %>% summarize(mean_Value = mean(rating))
+
+
+
+genres_modify_2 %>% group_by(individual_group) %>% count()
+genres_modify_2 = genres_modify_2 %>% group_by(individual_group) %>% mutate()
+
+# now we will evaluate individual performer rating
+
+performer_name_modify = genres_modify_2 %>% mutate(performer_new = tolower(performer)) %>% separate_rows(performer_new, sep = "\\s*&\\s*|\\s*featuring\\s*|\\s+or\\s+|\\s*with\\s*") %>%  mutate(performer_new = str_trim(performer_new))
+
+performer_name_modify %>% group_by(performer_new) %>% count()
+
+performer_individual_ratings = performer_name_modify %>% group_by(performer_new) %>% summarize(avg_rating = mean(rating))
+performer_individual_ratings
+performer_rating = performer_name_modify %>% group_by(performer_new) %>% mutate(performer_average = mean(rating))
+performer_rating %>% select(id, performer_new, performer_average, song)
+
+
+performer_rating_1 = performer_name_modify %>% group_by(performer_new) %>% mutate(avg_rating = mean(rating)) %>% ungroup() %>% mutate(performer_new = avg_rating)
+# performer_rating_1
+performer_rating_1 = performer_rating_1 %>% group_by(id) %>% mutate(performer_new = mean(performer_new))
+performer_rating_1 = performer_rating_1 %>%  select(-avg_rating)
+performer_rating_1 %>% group_by(id)
+# performer_rating_1
+# performer_rating_1 %>% filter(id == 28400)
+performer_rating_2= distinct(performer_rating_1, .keep_all = T)
+performer_rating_2
+# performer_rating_2 %>% filter(id == 28400)
+
+
+
+```
+
+## Test
+
+
+
+
+
+```{r}
+songs_test = read_csv("data/scoringData.csv")
+songs_test = change_track_explicit_to_numeric(songs_test)
+songs_test = songs_test %>% separate_rows(genre, sep = ",\\s*")
+songs_test = songs_test %>%  mutate(genre = str_replace_all(genre, "\\[|\\]|'|\"", ""))
+songs_test = songs_test %>% mutate(track_duration = track_duration/(60*1000))
+
+# songs_test_without_rating = songs_test
+songs_test
+
+# copying the corresponding values of the genre type to songs
+index_value = match(songs_test$genre, genre_mean_rating$genre)
+index_value
+songs_test$genre = genre_mean_rating$avg_rating[index_value] 
+songs_test_1 = songs_test %>% group_by(id) %>% mutate(genre = mean(genre))
+songs_test_1
+songs_test_2= distinct(songs_test_1, .keep_all = T)
+songs_test_2
+songs_test_2 = create_interactions_Variable(songs_test_2)
+# geners_modify_2 = create_danceability_variance(geners_modify_2)
+# geners_modify_2 = create_temo_variance(geners_modify_2)
+songs_test_2 = create_song_intensity(songs_test_2)
+songs_test_2 = create_acoustic_energy(songs_test_2)
+songs_test_2 = create_live_energy(songs_test_2)
+songs_test_2 = create_instrumental_energy(songs_test_2)
+dim(songs_test_2)
+
+# now the modification done here is for the performer? for team of performer and individual performer
+songs_test_2$individual_group <- ifelse(grepl("\\s+&\\s+|\\s+featuring\\s+|\\s+or\\s+|\\s+with\\s+", songs_test_2$performer), 1, 2)
+songs_test_2
+
+
+# now we will add the performer rating to the test data as well
+songs_test_performer_spliting_performers = songs_test_2 %>% mutate(performer_new = tolower(performer)) %>% separate_rows(performer_new, sep = "\\s*&\\s*|\\s*featuring\\s*|\\s+or\\s+|\\s*with\\s*") %>%  mutate(performer_new = str_trim(performer_new))
+songs_test_performer_spliting_performers
+
+index_value = match(songs_test_performer_spliting_performers$performer_new, performer_individual_ratings$performer_new)
+songs_test_performer_spliting_performers$performer_new = performer_individual_ratings$avg_rating[index_value] 
+songs_test_performer_spliting_performers
+
+
+
+
+songs_test_performer_combined = songs_test_performer_spliting_performers %>% group_by(id) %>% mutate(performer_new = mean(performer_new))
+songs_test_performer_combined = songs_test_performer_combined %>% group_by(id) %>% mutate(performer_new = mean(performer_new))
+songs_test_performer_combined= distinct(songs_test_performer_combined, .keep_all = T)
+songs_test_performer_combined = mice(songs_test_performer_combined, m = 5, method = "pmm")
+songs_test_performer_combined = complete(songs_test_performer_combined)
+songs_test_performer_combined
+
+```
+
+
+# check for best subset
+
+```{r}
+# here we use hybrid model
+
+start_mod = lm(rating~1,data=performer_rating_2)
+empty_mod = lm(rating~1,data=performer_rating_2)
+colnames()
+full_mod = lm(rating~genre+ track_duration+ track_explicit+ danceability+ energy+ key+ 
+                   loudness+ mode+ speechiness+ acousticness+
+                   instrumentalness+
+                   liveness+
+                   valence+
+                   tempo+
+                   time_signature+
+                   interactive+
+                   song_intensity+
+                   acoustic_energy+
+                   liveenergy+
+                   instrumental_energy+
+                   individual_group+
+                   performer_new,performer_rating_2)
+
+
+
+hybridStepwise = step(start_mod,
+                      scope=list(upper=full_mod,lower=empty_mod),
+                      direction='both')
+summary(hybridStepwise)
+
+hybridStepwise$anova
+
+# shrinkage regression:
+library(glmnet)
+# set.seed(1031)
+x = model.matrix(rating~genre+ track_duration+ track_explicit+ danceability+ energy+ key+ 
+                   loudness+ mode+ speechiness+ acousticness+
+                   instrumentalness+
+                   liveness+
+                   valence+
+                   tempo+
+                   time_signature+
+                   interactive+
+                   song_intensity+
+                   acoustic_energy+
+                   liveenergy+
+                   instrumental_energy+
+                   individual_group+
+                   performer_new,data=performer_rating_2)
+y = performer_rating_2$rating
+cv_lasso = cv.glmnet(x = x, 
+                     y = y, 
+                     alpha = 1,
+                     type.measure = 'mse')
+
+#choose the min lambda (not the best way)
+cv_lasso$lambda.min
+coef(cv_lasso, s = cv_lasso$lambda.min) %>%
+  round(4)
+
+#choose the 1se lambda (for the best model)
+#ethod involves selecting the value of λ that gives the most parsimonious model within one standard error (SE) of the minimum cross-validation error. 
+cv_lasso$lambda.1se
+coef(cv_lasso, s = cv_lasso$lambda.1se) %>%
+  round(4)
+
+```
+
+
+# prediction
+
+```{r}
+
+model_1 = lm(rating~performer_new+
+               danceability+
+               speechiness+
+               loudness+
+               valence+
+               track_duration+
+               track_explicit+
+               instrumentalness+
+               acoustic_energy+
+               acousticness
+               ,performer_rating_2)
+model_1_predict = predict(model_1,songs_test_performer_combined)
+# length(songs_test_2$id)
+# length(model_1_predict)
+# songs_test_2[2812,]
+
+# songs_test_2[,6]
+
+
+
+```
+
+
+# Saving the model
+
+```{r}
+
+submissionFile = data.frame(id = songs_test_2$id, rating = model_1_predict)
+# submissionFile[is.na(submissionFile)] = complete(mice(submissionFile))
+submissionFile
+sapply(submissionFile, function(dat) which(is.na(dat)))
+write.csv(submissionFile, 'model_4_3.csv',row.names = F)
+# head(songs_test)
+# head(geners_modify)
+# dim(geners_modify)
+
+
+```
+
+
+
+
+```{r}
+
+
+
+```
+
+
+
+
+```{r}
+
+
+
+```

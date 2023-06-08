@@ -1,0 +1,440 @@
+---
+title: "The Perfect Melody"
+author: "Srivastav Budugutta"
+date: "2023-04-24"
+viewport: width=device-width, initial-scale=1
+---
+
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{css, echo=FALSE}
+h1.title {
+  text-align: center;
+}
+
+```
+
+<h1 class = "title">Predictive Analysis Competition Report</h1>
+
+# Introduction
+
+The aim of this competition is to create a predictive model to predict the rating of various songs by utilizing the songs characteristics/features (like using performer or genere etc.. or combination of these features). Two distinct datasets were provided, one is analysisData.csv to train the model and scoringData.csv to predict the ranking for the given songs characteristics of the songs. The essence of this competition is to utilize the data exploration techniques, understand the dataset use data tyding techniques, feature engineering methods, using predictive algorithm to predict the rating and fianlly tune the model by tuning hyper-parameters to improve accuracy of our prediction.
+
+
+# Data Description
+
+This is a song dataset which was given as part of kaggle compitetion which contains auditory features of the songs  which are used to Construct a model to predict ratings based on auditory features of the songs included in scoringData.csv.
+
+Data consist of the following auditory features of the songs:
+
+
++ id: Song id
++ performer: Performer name
++ song: Song name
++ genre: Genre
++ track_duration: Duration in milliseconds
++ track_explicit: True,False
++ danceability: values from 0(least danceable) to 1.0 (most danceable)
++ energy: values from 0.0 to 1.0, It is a measure of intensity and activity.
++ key: represents key of the track, values ranges from 0-11
++ loudness: represents loudness in decibels(db). -60 to 0db. 
++ mode: Indicates the modality of a track. 1 for Major and 0 for minor.
++ speechiness: Detects the presence of spoken words in a track. values from 0.0 to 1
++ acousticness: Measure if the track is acoustic. value ranges from 0-1. 1 for high confidence the track is acoustic.
++ instrumentalness: The Closure the instrumentalness the value is close to 1.0. Values 0 to 1
++ liveness: Higher the value the more the chances that it is performed live. Values range 0-1.
++ valence: describes the positiveness displayed by a track. Range: 0-1
++ tempo: units of measure in BPM-beats per minute. Range: 0-242
++ time_signature: Represents time signature. Range: 0-5
++ rating: Rating of the songs. values -2 to 87.
+
+# Loading the required Libraries
+
+```{r libraries, message=FALSE, warning=FALSE, results='hide'}
+rm(list = ls())
+library(tidyverse)
+library(skimr)
+library(summarytools)
+library(ggcorrplot)
+library(mice)
+
+```
+
+# Read Data
+
+```{r reading_data_Set, message=FALSE, warning=FALSE, results='hide'}
+#Reading the dataset
+songs_train_data = read_csv("data/analysisData.csv")
+songs_test_data = read_csv("data/scoringData.csv")
+
+```
+
+# Understanding and Exploring Data
+
+After loading the dataset I have started to explore the data by understanding the structure of the dataset, started exploring the dataset to see missing values, understanding the range of values and its distribution.
+
+```{r structure_of_data_set, message=FALSE, warning=FALSE, results='hide'}
+# Understanding the structure of the train dataset
+str(songs_train_data)
+head(songs_test_data)
+
+```
+
+```{r}
+
+
+# To explore all the variables, their missing data, mean values, Range of values, data types and to understand the values distribution by looking at the graphs.
+print(dfSummary(songs_train_data,style='grid',graph.col = T),method = 'render')
+# Exploring the variables in the test data to see if it also can be cleaned.
+# print(dfSummary(songs_test_data,style='grid',graph.col = T),method = 'render')
+
+```
+
+
+Upon looking at the data I have identified that the rating have values from -2 to 87. But in general the rating starts at 0. And also I have noticed that the time duration of the song is in milliseconds and it made more sense to convert it to minutes as it is very much readable in minutes than. seconds. I also found that each songs is filled with multiple genre types. We can use data tidying to clean the data and to transform the data at our when required. This includes converting time to minutes, converting ratings which are less than to to 0, cleaning up genre type.
+
+# Function Definitions
+I am defining the functions here as these are used at later part of the codes.
+
+```{r message=FALSE, warning=FALSE, results='hide'}
+# This function will normalize the ranking of the songs which are less than 0 to 0.
+clean_rating = function(dat){
+  dat = dat %>% mutate(rating = ifelse(rating<0,0,rating))
+  
+  return(dat)
+}
+
+# This function will help to change the categorical variable to numeric, here it is changing FALSE to 0 and TRUE to 1
+change_track_explicit_to_numeric = function(dat){
+  dat = dat %>% mutate(track_explicit = ifelse(track_explicit == FALSE,0,1))
+  return(dat)
+}
+# This function will change the time from milliseconds to minutes
+convert_time_from_milli_seconds_to_minutes = function(dat){
+  
+  dat = dat %>% mutate(track_duration = track_duration/(60*1000))
+  return(dat)
+}
+
+# This function will help in imputing the missing values
+impute_missing_values = function(dat){
+  
+  dat = mice(dat, method = "pmm")
+  dat = complete(dat)
+  return(dat)
+}
+
+
+# This function will check if there are gener which are most listened and provide the value 1 if it gind the genre type else 0
+
+check_for_genre_type = function(dat){
+  dat$pop_genre = ifelse(grepl("pop", dat$genre, ignore.case = T), 1, 0)
+  dat$jazz_genre <- ifelse(grepl("jazz", dat$genre, ignore.case = T), 1, 0)
+  dat$indie_genre <- ifelse(grepl("indie", dat$genre, ignore.case = T), 1, 0)
+  dat$alternativerock_genre <- ifelse(grepl("alternative rock", dat$genre, ignore.case = T), 1, 0)
+  dat$latin_genre <- ifelse(grepl("latin", dat$genre, ignore.case = T), 1, 0)
+  dat$classical_genre <- ifelse(grepl("classical", dat$genre, ignore.case = T), 1, 0)
+  dat$country_genre <- ifelse(grepl("country", dat$genre, ignore.case = T), 1, 0)
+  dat$rap_genre <- ifelse(grepl("rap", dat$genre, ignore.case = T), 1, 0)
+  dat$rock_genre <- ifelse(grepl("rock", dat$genre, ignore.case = T), 1, 0)
+  dat$hiphop_genre = ifelse(grepl("hip hop", dat$genre, ignore.case = T), 1, 0)
+  dat$metal_genre <- ifelse(grepl("metal", dat$genre, ignore.case = T), 1, 0)
+  return(dat)
+}
+```
+
+
+# Data Tidying
+
+In this process we will try to clean the data like cleaning the ranking column (normalizing the values which are less than 0 to 0), changing track_explicit to numeric, cleaning the genre data. Genre is filled with square brackets "[]", commass (,), double quotes (""), single quotes ('') and white spaces which needs to be cleaned. Genre type can be directly used as a feature for training the model. Additionally I have also noticed that performer and songs name did not made any improvement in predicting the rating.
+
+
+```{r message=FALSE, warning=FALSE, results='hide'}
+# cleaning the rating column by normalizing the rating which are less than 0 to 0
+songs_train_data = clean_rating(songs_train_data)
+# Reverifying if our function did the right job of cleaning up rating
+any(songs_train_data$rating<0)
+# Note this cannot be performed on the test data as there is no rating column on the test dataset and this is what we need to predict.
+
+
+# changing track_explicit to numeric from logical on both train and test dataset
+songs_train_data = change_track_explicit_to_numeric(songs_train_data)
+songs_test_data = change_track_explicit_to_numeric(songs_test_data)
+
+
+# changing time duration from milliseconds to minutes on both train and test dataset.
+songs_train_data = convert_time_from_milli_seconds_to_minutes(songs_train_data)
+songs_test_data = convert_time_from_milli_seconds_to_minutes(songs_test_data)
+
+# cleaning up genre by splitting into into multiple rows of each genre type. we are trying to separate all the genre types
+# This line will separate rows if it finds any spaces in genre
+songs_train_data = songs_train_data %>% separate_rows(genre, sep = ",\\s*")
+
+
+# This line will replace double quotes (""), single quotes (''), spaces with "" (meaning nothing-no spaces).
+songs_train_data = songs_train_data %>%  mutate(genre = str_replace_all(genre, "\\[|\\]|'|\"", ""))
+# creating genre with mean of rating. This will contain mean of rating of each genre type
+genre_mean_rating = songs_train_data %>% group_by(genre) %>% summarize(avg_rating = mean(rating))
+# checking if genre mean rating is properly reflected or not
+genre_mean_rating %>% filter(genre == "acoustic punk")
+
+
+
+```
+
+
+# Feature Engineering
+
+I have created new features like interactive_ness of the songs, acoustic_energy, live_energy,instrumental_energy, live_energy by utilizing existing features like liveness, instrumentalness,energy,danceability. Creating new features will help us to build better models to predict the rating accurately. Upon looking at the genre column I realized that there might be case where each genre type might influence the rating of the song. So to include the genre as predictor I have created another feature called genre average rating, which tells what is the mean rating for each genre type, which I felt the most potential predictor for predicting the ranking.  As each song is a combination of multiple genre type, in order to know the influence of multiple genre types for each song I have again combined the average rating of each genre type for that song,by taking the mean value of all the genre type associated with that song. For instance: if the song "Aaa" has genre type ["pop","rock pop"] then the mean rating for "pop" say is 43 and "rock pop" is 56, the genre average for that song will be 43+56/2.
+
+
+
+```{r message=FALSE, warning=FALSE, results='hide'}
+
+# Here we are creating new feature with genre with average rating.
+songs_train_data = songs_train_data %>% group_by(genre) %>% mutate(avg_rating = mean(rating)) %>% ungroup() %>% mutate(genre = avg_rating)
+songs_train_data
+songs_train_data = songs_train_data %>% group_by(id) %>% mutate(genre = mean(genre))
+songs_train_data = songs_train_data %>%  select(-avg_rating)
+# combining if any duplicate rows
+songs_train_data= distinct(songs_train_data, .keep_all = T)
+# Check if the values are reflected
+songs_train_data
+
+# creating feature liveenergy (which is liveness*energy)
+songs_train_data = songs_train_data %>% mutate(liveliness_in_music = liveness*energy)
+songs_test_data = songs_test_data %>% mutate(liveliness_in_music = liveness*energy)
+
+# creating feature instrumental energy (which is energy - (energy*(1-instrumentalness)))
+songs_train_data = songs_train_data %>% mutate(intensity_of_instrumentation = energy - (energy*(1-instrumentalness)))
+songs_test_data = songs_test_data %>% mutate(intensity_of_instrumentation = energy - (energy*(1-instrumentalness)))
+
+# creating feature acoustic energy (which is acoustic_energy = (1 - instrumentalness) * energy)
+songs_train_data = songs_train_data %>% mutate(acousticness_in_the_music= (1 - instrumentalness) * energy)
+songs_test_data = songs_test_data %>% mutate(acousticness_in_the_music= (1 - instrumentalness) * energy)
+
+# creating feature interactive variable (which is interactive = danceability*energy)
+songs_train_data = songs_train_data %>% mutate(music_interactiveness = danceability*energy)
+songs_test_data = songs_test_data %>% mutate(music_interactiveness = danceability*energy)
+
+
+# Similarly we will clean the genre kind for train data as well
+songs_test_data = songs_test_data %>% separate_rows(genre, sep = ",\\s*")
+songs_test_data = songs_test_data %>%  mutate(genre = str_replace_all(genre, "\\[|\\]|'|\"", ""))
+
+# copying the corresponding values of the genre type to songs
+index_value = match(songs_test_data$genre, genre_mean_rating$genre)
+songs_test_data$genre = genre_mean_rating$avg_rating[index_value] 
+songs_test_data = songs_test_data %>% group_by(id) %>% mutate(genre = mean(genre))
+
+# check if the values are properly assigned
+print(songs_test_data)
+
+# combining the duplicate rows.
+songs_test_data= distinct(songs_test_data, .keep_all = T)
+
+# check if there are any NA values in both test and train dataset
+sapply(songs_train_data, function(dat) which(is.na(dat))) # No NA values found
+sapply(songs_test_data, function(dat) which(is.na(dat))) # Genre has NA values
+
+# Imputing the values as there are NA values in genre
+songs_test_data = impute_missing_values(songs_test_data)
+
+# Recheck if there are any NA values
+# check if there are any NA values in both test and train dataset
+sapply(songs_test_data, function(dat) which(is.na(dat)))
+
+```
+
+# Indetifying Corelation between variables
+
+As we can see here 
+
+```{r}
+# Identifying the correlation of the numeric variables with that of rating
+corr_songs = cor(songs_train_data[sapply(songs_train_data,is.numeric)])
+# print(corr_songs)
+
+ggcorrplot(corr_songs,
+           method = 'square',
+           type = 'lower',
+           # show.diag = F,
+           colors = c('red', 'white', 'darkgreen'))
+
+```
+From the corrplot we can see that more the green more the correlation and darker the red color lesser the correlation. And we can clearly see the "id" variable has 0 correlation with all the variables. SO this cab be eliminated from the predictor list. Likewise we can see for other variables. 
+
+# Regression Models
+
+## Model 1: Linear Regression
+
+Initially I started with linear regression model. For selecting the best predictor I Step wise variable selection model
+
+### Subset Selection
+
+```{r subset_selection, message=FALSE, warning=FALSE, results='hide'}
+
+start_mod = lm(rating~1,data=songs_train_data)
+empty_mod = lm(rating~1,data=songs_train_data)
+
+# currently we have selected the following variables as we know that Id does not have impact on the rating.
+full_mod = lm(rating~genre+track_duration+track_explicit+danceability+ energy+key+loudness+mode+speechiness+acousticness+instrumentalness+ liveness+valence+tempo+time_signature+liveliness_in_music+intensity_of_instrumentation+acousticness_in_the_music+music_interactiveness,songs_train_data)
+hybridStepwise = step(start_mod,scope=list(upper=full_mod,lower=empty_mod), direction='both')
+```
+
+```{r subset_display}
+# Displaying best model which will be later used for linear regression
+hybridStepwise$anova$Step
+
+```
+
+
+### Applying Linear regression model
+
+Using this Approach I was able to get RMSE score of 15.06
+
+```{r linear_regression_model, message=FALSE, warning=FALSE, results='hide', eval=FALSE}
+
+linear_regression_model_1 = lm(rating~genre+danceability+track_duration+speechiness+music_interactiveness+instrumentalness+time_signature+liveliness_in_music+energy+track_explicit+acousticness,songs_train_data)
+model_1_predict = predict(linear_regression_model_1,songs_test_data)
+```
+
+```{r}
+lr_model1_rmse = 15.06
+```
+
+Feature engineering again for better insights
+```{r eval=FALSE}
+
+#After that i started working on feature engineering and I started to use the same logic which  I Have on genre to apply for performer (getting the mean rating of performer)
+
+## Train Data
+
+# Currently some of the performers are working together to produce a song. In some places we can see the words like A "featuring" B, A "&" B or in some places we can see A "with" B, to generate songs. So I thought there might be influence of each performer on the rating, So I used similar logic which I have used in genre to perform it on performers and then get individual performers mean rating.
+performer_name_modify = songs_train_data %>% mutate(performer = tolower(performer)) %>% separate_rows(performer, sep = "\\s*&\\s*|\\s*featuring\\s*|\\s+or\\s+|\\s*with\\s*") %>%  mutate(performer = str_trim(performer))
+# Here we are finding individual performer ratings
+performer_individual_ratings = performer_name_modify %>% group_by(performer) %>% summarize(avg_rating = mean(rating))
+performer_individual_ratings
+
+
+# Combining performers rating meaning, currently we have performer A and performer B and now we know their average rating, So if there are places where A and B performed together we will take take average rating of them together.
+performer_rating_1 = performer_name_modify %>% group_by(performer) %>% mutate(avg_rating = mean(rating)) %>% ungroup() %>% mutate(performer = avg_rating)
+# performer_rating_1
+performer_rating_1 = performer_rating_1 %>% group_by(id) %>% mutate(performer = mean(performer))
+performer_rating_1 = performer_rating_1 %>%  select(-avg_rating)
+performer_rating_1 %>% group_by(id)
+# performer_rating_1
+# performer_rating_1 %>% filter(id == 28400)
+performer_rating_2= distinct(performer_rating_1, .keep_all = T)
+songs_train_data = performer_rating_2 
+
+## Test data (using the same logic for test data)
+songs_test_performer_spliting_performers = songs_test_data %>% mutate(performer = tolower(performer)) %>% separate_rows(performer, sep = "\\s*&\\s*|\\s*featuring\\s*|\\s+or\\s+|\\s*with\\s*") %>%  mutate(performer = str_trim(performer))
+songs_test_performer_spliting_performers
+index_value = match(songs_test_performer_spliting_performers$performer, performer_individual_ratings$performer)
+songs_test_performer_spliting_performers$performer = performer_individual_ratings$avg_rating[index_value] 
+songs_test_performer_combined = songs_test_performer_spliting_performers %>% group_by(id) %>% mutate(performer = mean(performer))
+songs_test_performer_combined = songs_test_performer_combined %>% group_by(id) %>% mutate(performer = mean(performer))
+songs_test_performer_combined= distinct(songs_test_performer_combined, .keep_all = T)
+songs_test_performer_combined = mice(songs_test_performer_combined, m = 5, method = "pmm", seed = 123)
+songs_test_performer_combined = complete(songs_test_performer_combined)
+songs_test_data = songs_test_performer_combined
+
+# we applied best hybrid algorithm to get the best subset and applied Linear regression algorith, the RMSE score was 15.04 which is an improvement from previous.
+
+```
+
+```{r}
+lm_model1_rmse_1 = 15.0531
+```
+
+
+
+## Mode 2: Random Forest
+
+The main reason to choose Random forest than bagging is that it provide an improvement over bagged trees by way of a small tweak that de-correlates the trees. The causes the varience to be reduced when we average the tree. Bagging involves constructing multiple decision trees based on bootstrap samples of the training set. During the construction of decision trees in this context, the selection of split for each split is randomized by selecting m predictors from the full set of p predictors. The split is then made using only one of the selected m predictors.
+Since random forest will auto select the best predictors I have applied all the predictors for the algorithm to select the best predictors by itself and predict the accuracy.
+
+Using this model I got RMSE of 14.8 which is an improvement from linear regression model.
+
+```{r eval=FALSE}
+
+model_1 = randomForest(rating~., data=songs_train_data)
+importance_scores = importance(model_1)
+top_predictors = names(importance_scores[order(importance_scores, decreasing = TRUE)[1:5]])
+pred = predict(model_1, newdata=songs_test_data)
+
+# I Did further more feature engineering on this to improve the accuracy and this predictor is also used in other algorithms like tuned random forest, xgboost.
+# I started to include selective genre in the model. So i selected 15 top genre type which are out performing on the rating. if there is pop in that i converted I made the variable as 1 else 0. And then again ran the prediction
+songs_train_data = check_for_genre_type(songs_train_data)
+songs_test_data = check_for_genre_type(songs_test_data)
+
+```
+
+```{r}
+randomforest_rmse = 14.81074
+
+```
+
+## Model 3: Tuned RandomForest
+
+I started to tune hyper parameters of Random Forest. For this the RMSE score was 14.78. This is a reduction from Random forest Algorithm.
+```{r eval=FALSE}
+trControl = trainControl(method = 'cv', number = 5)
+train = songs_train_data %>% select(everything())
+tuneGrid = expand.grid(mtry = 1:20)
+forest_cv = train(rating~.,data = train,method = 'rf', trControl = trControl, tuneGrid = tuneGrid, ntree = 500)
+forest_cv$bestTune$mtry
+cvforest = randomForest(rating~.,songs_train_data,mtry = forest_cv$bestTune$mtry,ntree = 300)
+pred_forest = predict(cvforest, newdata= songs_test_data)
+```
+
+```{r}
+tuned_random_forest_rmse = 14.79887
+```
+
+## Best Model: Tuned XGBoost
+
+One of my best model was tuned xgboost algorithm for which I got the best accuracy score of 14.7. I have got this by tuning XGBoost hyperparameters.
+
+```{r eval=FALSE}
+
+songs_train_data = songs_train_data %>% select(-id, -song)
+trt = designTreatmentsZ(dframe = songs_train_data,
+                        varlist = names(songs_train_data)[5:length(songs_train_data)])
+newvars = trt$scoreFrame[trt$scoreFrame$code%in% c('clean','lev'),'varName']
+train_input = prepare(treatmentplan = trt,dframe = songs_train_data,varRestriction = newvars)
+test_input = prepare(treatmentplan = trt,dframe = songs_test_data,varRestriction = newvars)
+## choosing the hyper parameter
+tune_nrounds = xgb.cv(data=as.matrix(train_input),label = songs_train_data$rating,nrounds=300,nfold = 5, verbose = 0)
+# Using the optimal nrounds
+xgboost2= xgboost(data=as.matrix(train_input),label = songs_train_data$rating, nrounds=which.min(tune_nrounds$evaluation_log$test_rmse_mean),
+                  verbose = 0)
+pred = predict(xgboost2, 
+               newdata=as.matrix(train_input))
+```
+
+```{r}
+tuned_xg_boost_rmse = 14.78
+```
+
+## Summarizing the overal RMSE scores which I have achieved
+
+
+```{r, eval = TRUE, include = TRUE}
+ploting_rmse = data.frame(model_names = c("Linear Regression", "Random Forest", "Tuned Random Forest", "XGBoost"),RMSE = c(lm_model1_rmse_1,randomforest_rmse,tuned_random_forest_rmse,tuned_xg_boost_rmse))
+ggplot(ploting_rmse, aes(x = model_names, y = RMSE, fill = model_names)) + 
+  geom_bar(stat = "identity", color = "black") +
+  geom_text(aes(label = round(RMSE, 2)), vjust = -0.5) + 
+  ggtitle("RMSE by Model") +
+  xlab("Model") + ylab("RMSE") +
+  theme_classic()
+
+```
+
+
+In future I plan to work on few more algorithm like "gbm" so that I  can optimize the cost function not just minimize a standard loss function, And another algorithm which I wanted to try is "ranger" package, and tune the hyper parameters. I have not tried Bagging yet, but it will be my other algorithm to look at.

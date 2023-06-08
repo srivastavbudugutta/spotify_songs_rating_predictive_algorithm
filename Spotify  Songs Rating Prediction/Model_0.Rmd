@@ -1,0 +1,34 @@
+---
+title: "Model_0"
+author: "Srivastav Budugutta"
+date: "2023-03-11"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Importing Data
+
+```{r}
+library(tidyverse)
+
+```
+
+```{r}
+songs = read_csv("data/analysisData.csv")
+colnames(songs)
+str(songs)
+songs = songs %>% mutate(track_explicit = ifelse(track_explicit == FALSE,0,1))
+songs$track_explicit
+str(songs)
+model_0 = lm(rating ~ tempo+time_signature+mode+speechiness+ track_explicit,songs)
+test_data = read_csv("data/scoringData.csv")
+test_data = test_data %>% mutate(track_explicit = ifelse(track_explicit == FALSE,0,1))
+pred = predict(model_0, test_data)
+
+submissionFile = data.frame(id = test_data$id, rating = pred)
+write.csv(submissionFile, 'model_0.csv',row.names = F)
+
+```

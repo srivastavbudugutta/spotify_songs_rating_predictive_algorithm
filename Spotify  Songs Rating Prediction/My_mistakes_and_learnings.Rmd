@@ -1,0 +1,154 @@
+---
+title: "My_Mistakes_And_Learnings"
+author: "Srivastav Budugutta"
+date: "2023-03-13"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+While trying to modify the genre I used rating as reference which will not be there in the training set.
+
+
+Tempo variability = standard deviation of tempo values within the song segments
+Formula: std(tempo_values)
+
+Musical complexity = the sum of absolute differences in pitch classes between adjacent chords or notes in a song
+Formula: sum(abs(key_diffs))
+
+Party factor = (danceability + energy + (tempo/200)) / 3
+Formula: (danceability + energy + (tempo/200)) / 3
+
+# added in model_4_1
+Vocal dominance = 1 - instrumentalness - speechiness
+Formula: 1 - instrumentalness - speechiness
+
+# added in model_4
+Live energy = liveness * energy
+Formula: liveness * energy
+
+# added in model_4_1
+Emotional intensity = (loudness / -60) * valence
+Formula: (loudness / -60) * valence
+
+#Can be tried
+Genre fusion = the number of different key and mode changes within a song, multiplied by the number of unique genres in the genre column
+Formula: num_key_changes * num_unique_genres
+
+
+
+Chord complexity: A measure of the harmonic complexity of a song, calculated by taking the average distance (in semitones) between consecutive chords.
+Formula: mean(abs(key_diffs))
+
+# added in model_4
+Song intensity: A measure of the overall intensity of a song, calculated as the product of its danceability, energy, and loudness.
+Formula: danceability * energy * (10^(loudness/20))
+
+Genre diversity: A measure of the diversity of genres represented in a song, calculated by taking the Shannon entropy of the genre distribution (i.e., the degree of uncertainty or randomness in the distribution).
+Formula: -sum(p_i * log2(p_i)), where p_i is the proportion of songs in the genre column that belong to genre i.
+
+Melodic complexity: A measure of the melodic complexity of a song, calculated as the average number of unique pitches per beat.
+Formula: sum(num_pitches) / track_duration * tempo * time_signature
+
+
+# not good
+Danceability variance: A measure of the variability in danceability throughout a song, calculated as the standard deviation of danceability values within the song segments.
+Formula: std(danceability_values)
+
+# not good
+Musical tension: A measure of the degree of musical tension or dissonance in a song, calculated as the average dissonance between consecutive chords.
+Formula: mean(dissonance_values)
+
+# not good
+Vocal range: A measure of the range of vocal notes in a song, calculated as the difference between the highest and lowest pitch values in the vocal track.
+Formula: max(vocal_pitches) - min(vocal_pitches)
+
+
+
+Average loudness per second (ALPS): This feature calculates the average loudness of a song over time by dividing the total loudness by the duration of the track. This can give an idea of how loud the song is overall.
+
+makefile
+Copy code
+ALPS = loudness / (track_duration / 1000)
+
+# not good
+Rhythm stability: Rhythm stability measures how consistent the beat of the song is throughout its duration. One way to calculate this is by taking the variance of the inter-beat intervals (IBI) of the song, which is the time between successive beats. Lower variance indicates a more stable rhythm.
+
+makefile
+Copy code
+IBIs = calculate_inter_beat_intervals(beats)  # beats is a list of beat timestamps
+rhythm_stability = np.var(IBIs)
+
+
+# not good
+Harmonic complexity: Harmonic complexity measures how complex the harmony of the song is, based on the number of different chords or harmonic changes. One way to calculate this is by counting the number of different chords used in the song.
+
+python
+Copy code
+chords = detect_chords(notes)  # notes is a list of MIDI notes
+harmonic_complexity = len(set(chords))
+
+
+Instrumental energy: This feature calculates the energy of only the instrumental parts of the song, by subtracting the energy of the vocal parts from the overall energy. This can give an idea of how energetic the instrumental parts are compared to the vocal parts.
+
+makefile
+Copy code
+vocal_energy = energy * (1 - instrumentalness)
+instrumental_energy = energy - vocal_energy
+
+
+# not good
+Segmental tempo variability: This feature calculates how much the tempo of the song varies over its duration by taking the standard deviation of the tempo values of each segment of the song. This can give an idea of how much the tempo changes within the song.
+
+scss
+Copy code
+segment_tempos = detect_segments_tempos(audio_file)
+segmental_tempo_variability = np.std(segment_tempos)
+
+
+# not good
+Loudness Range: This feature indicates the difference between the maximum and minimum loudness of a track. It can be calculated as follows:
+
+loudness_range = max(loudness) - min(loudness)
+
+# not good
+Average Pitch: This feature indicates the average pitch of a track. It can be calculated as follows:
+
+avg_pitch = sum(key) / len(key)
+
+Instrumental Energy: This feature indicates the energy level of instrumental parts of a track. It can be calculated by multiplying instrumentalness with energy:
+
+instrumental_energy = instrumentalness * energy
+
+# not good
+Tempo Range: This feature indicates the difference between the maximum and minimum tempo of a track. It can be calculated as follows:
+
+tempo_range = max(tempo) - min(tempo)
+
+# not good
+Melodic Complexity: This feature indicates the complexity of the melodic content of a track. It can be calculated by summing up the absolute differences between adjacent pitches in the key column:
+
+melodic_complexity = sum(abs(key[i] - key[i-1])) for i in range(1, len(key))
+
+Acoustic Energy: This feature indicates the energy level of the acoustic parts of a track. It can be calculated as follows:
+
+# added in model_4
+acoustic_energy = (1 - instrumentalness) * energy
+
+Danceability Energy Ratio: This feature indicates the ratio of danceable energy to the total energy of a track. It can be calculated as follows:
+# added in model_4
+danceability_energy_ratio = danceability * energy
+
+Loudness Energy Ratio: This feature indicates the ratio of loudness to the total energy of a track. It can be calculated as follows:
+# added in model_4_1
+loudness_energy_ratio = loudness / energy
+
+Speechiness Energy Ratio: This feature indicates the ratio of speechiness to the total energy of a track. It can be calculated as follows:
+# added in model_4_1
+speechiness_energy_ratio = speechiness * energy
+
+Valence Tempo Ratio: This feature indicates the ratio of valence to the tempo of a track. It can be calculated as follows:
+
+valence_tempo_ratio = valence / tempo

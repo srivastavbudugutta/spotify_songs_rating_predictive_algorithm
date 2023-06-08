@@ -1,0 +1,17 @@
+---
+title: "Model_0"
+author: "Srivastav Budugutta"
+date: "2023-03-11"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Importing Data
+
+```{r}
+songs = read.csv("")
+
+```
